@@ -102,7 +102,7 @@ cron.schedule("* * * * *", async () => {
   }
 });
 
-const listenHost = process.env.NODE_ENV === "production" ? "0.0.0.0" : "192.168.1.16";
+const listenHost = process.env.NODE_ENV === "production" ? "0.0.0.0" : "10.238.229.243";
 
 server.listen(PORT, listenHost, () => {
   console.log(`Server running on ${listenHost}:${PORT}`);

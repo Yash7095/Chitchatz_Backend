@@ -1,6 +1,7 @@
 import cloudinary from "../lib/cloudinary.js";
 import Status from "../models/status.model.js";
 import User from "../models/user.model.js";
+import { io } from "../lib/socket.js";
 
 export const createStatus = async (req, res) => {
   try {
@@ -31,6 +32,9 @@ export const createStatus = async (req, res) => {
       "fullName profilePic username"
     );
 
+    // Notify all connected clients so StatusBar updates without refresh
+    io.emit("newStatus", { userId: userId.toString() });
+
     res.status(201).json(populated);
   } catch (error) {
     console.log("Error in createStatus:", error.message);
@@ -51,6 +55,7 @@ export const getStatuses = async (req, res) => {
     // Group by userId
     const grouped = {};
     statuses.forEach((s) => {
+      if (!s.userId) return; // skip if user was deleted
       const uid = s.userId._id.toString();
       if (!grouped[uid]) {
         grouped[uid] = {

@@ -17,6 +17,15 @@ const groupMessageSchema = new mongoose.Schema(
     ],
     replyTo: { type: mongoose.Schema.Types.ObjectId, ref: "GroupMessage", default: null },
     isDeleted: { type: Boolean, default: false },
+    poll: {
+      question: { type: String },
+      options: [
+        {
+          text: { type: String },
+          votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+        },
+      ],
+    },
   },
   { timestamps: true }
 );

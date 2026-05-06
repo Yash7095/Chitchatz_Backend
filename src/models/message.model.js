@@ -57,6 +57,10 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isBookmarked: {
+      type: Boolean,
+      default: false,
+    },
     scheduledFor: {
       type: Date,
       default: null,

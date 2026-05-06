@@ -4,6 +4,7 @@ import User from "../models/user.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { sendOTPEmail } from "../lib/mailer.js";
+import { io } from "../lib/socket.js";
 
 const formatUserResponse = (user) => ({
   _id: user._id,
@@ -88,7 +89,9 @@ export const updateProfile = async (req, res) => {
 
     const updateData = {};
 
-    if (profilePic) {
+    if (profilePic === "remove") {
+      updateData.profilePic = "";
+    } else if (profilePic) {
       const uploadResponse = await cloudinary.uploader.upload(profilePic);
       updateData.profilePic = uploadResponse.secure_url;
     }
@@ -103,6 +106,15 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "No update data provided" });
 
     const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
+
+    // Broadcast so other users' sidebars refresh profile pic / mood changes
+    io.emit("profileUpdated", {
+      userId: userId.toString(),
+      profilePic: updatedUser.profilePic,
+      fullName: updatedUser.fullName,
+      mood: updatedUser.mood,
+    });
+
     res.status(200).json(formatUserResponse(updatedUser));
   } catch (error) {
     console.log("Error in updateProfile:", error);
@@ -140,12 +152,16 @@ export const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "No account found with this email" });
 
+    console.log("forgotpassword controller called")
+
     const otp = crypto.randomInt(100000, 999999).toString();
     const hashedOTP = await bcrypt.hash(otp, 10);
 
     user.resetPasswordOTP = hashedOTP;
     user.resetPasswordOTPExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await user.save();
+
+    console.log("email of user from forgotpasswrod controllr =", user.email)
 
     await sendOTPEmail(user.email, otp, user.fullName);
 

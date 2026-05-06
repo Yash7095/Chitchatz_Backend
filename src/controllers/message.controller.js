@@ -22,12 +22,18 @@ export const getMessages = async (req, res) => {
     const myId = req.user._id;
 
     const messages = await Message.find({
-      $or: [
-        { senderId: myId, receiverId: userToChatId },
-        { senderId: userToChatId, receiverId: myId },
+      $and: [
+        {
+          $or: [
+            { senderId: myId, receiverId: userToChatId },
+            { senderId: userToChatId, receiverId: myId },
+          ],
+        },
+        {
+          $or: [{ scheduledFor: { $exists: false } }, { scheduledFor: null }, { scheduledFor: { $lte: new Date() } }],
+        },
       ],
       isDeleted: false,
-      $or: [{ scheduledFor: null }, { scheduledFor: { $lte: new Date() } }],
     })
       .populate("replyTo", "text image video audio type senderId")
       .sort({ createdAt: 1 });
@@ -202,6 +208,77 @@ export const getPinnedMessages = async (req, res) => {
     res.status(200).json(pinned);
   } catch (error) {
     console.log("Error in getPinnedMessages:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// 8.1 — Search messages
+export const searchMessages = async (req, res) => {
+  try {
+    const { q } = req.query;
+    const myId = req.user._id;
+
+    if (!q || q.trim().length < 2) return res.status(200).json([]);
+
+    const results = await Message.find({
+      $or: [{ senderId: myId }, { receiverId: myId }],
+      text: { $regex: q.trim(), $options: "i" },
+      isDeleted: false,
+    })
+      .populate("senderId", "fullName profilePic")
+      .populate("receiverId", "fullName profilePic")
+      .sort({ createdAt: -1 })
+      .limit(30);
+
+    res.status(200).json(results);
+  } catch (error) {
+    console.log("Error in searchMessages:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// 8.6 — Toggle bookmark
+export const toggleBookmark = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const myId = req.user._id;
+
+    const message = await Message.findById(id);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant =
+      message.senderId.toString() === myId.toString() ||
+      message.receiverId.toString() === myId.toString();
+    if (!isParticipant) return res.status(403).json({ message: "Not authorized" });
+
+    message.isBookmarked = !message.isBookmarked;
+    await message.save();
+
+    res.status(200).json({ isBookmarked: message.isBookmarked });
+  } catch (error) {
+    console.log("Error in toggleBookmark:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// 8.6 — Get bookmarked messages
+export const getBookmarks = async (req, res) => {
+  try {
+    const myId = req.user._id;
+
+    const bookmarks = await Message.find({
+      $or: [{ senderId: myId }, { receiverId: myId }],
+      isBookmarked: true,
+      isDeleted: false,
+    })
+      .populate("senderId", "fullName profilePic")
+      .populate("receiverId", "fullName profilePic")
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.status(200).json(bookmarks);
+  } catch (error) {
+    console.log("Error in getBookmarks:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };

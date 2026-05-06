@@ -236,3 +236,84 @@ export const sendGroupMessage = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+// 8.5 — Create poll in group
+export const createGroupPoll = async (req, res) => {
+  try {
+    const { id: groupId } = req.params;
+    const { question, options } = req.body;
+    const senderId = req.user._id;
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    const isMember = group.members.some((m) => m.userId.toString() === senderId.toString());
+    if (!isMember) return res.status(403).json({ message: "Not a member" });
+
+    if (!question || !options || options.length < 2)
+      return res.status(400).json({ message: "Poll needs a question and at least 2 options" });
+
+    const pollMessage = new GroupMessage({
+      groupId,
+      senderId,
+      type: "text",
+      poll: {
+        question,
+        options: options.map((text) => ({ text, votes: [] })),
+      },
+    });
+    await pollMessage.save();
+
+    const populated = await GroupMessage.findById(pollMessage._id)
+      .populate("senderId", "fullName profilePic username");
+
+    group.members.forEach(({ userId }) => {
+      if (userId.toString() === senderId.toString()) return;
+      const socketId = getReceiverSocketId(userId.toString());
+      if (socketId) io.to(socketId).emit("newGroupMessage", { groupId, message: populated });
+    });
+
+    await Group.findByIdAndUpdate(groupId, { updatedAt: new Date() });
+    res.status(201).json(populated);
+  } catch (error) {
+    console.log("Error in createGroupPoll:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// 8.5 — Vote on a poll
+export const voteGroupPoll = async (req, res) => {
+  try {
+    const { id: groupId, msgId } = req.params;
+    const { optionIndex } = req.body;
+    const userId = req.user._id;
+
+    const message = await GroupMessage.findById(msgId);
+    if (!message || !message.poll) return res.status(404).json({ message: "Poll not found" });
+    if (message.groupId.toString() !== groupId) return res.status(403).json({ message: "Wrong group" });
+
+    // Remove any existing vote from this user across all options
+    message.poll.options.forEach((opt) => {
+      opt.votes = opt.votes.filter((v) => v.toString() !== userId.toString());
+    });
+
+    // Add vote to chosen option
+    if (optionIndex >= 0 && optionIndex < message.poll.options.length) {
+      message.poll.options[optionIndex].votes.push(userId);
+    }
+
+    await message.save();
+
+    // Notify all group members of updated poll
+    const group = await Group.findById(groupId);
+    group.members.forEach(({ userId: uid }) => {
+      const socketId = getReceiverSocketId(uid.toString());
+      if (socketId) io.to(socketId).emit("pollVoted", { groupId, msgId, poll: message.poll });
+    });
+
+    res.status(200).json(message.poll);
+  } catch (error) {
+    console.log("Error in voteGroupPoll:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
