@@ -40,7 +40,7 @@ app.use("/api/message", messageRoute);
 //   connectDB();
 // });
 
-server.listen(PORT, "192.168.1.196", () => {
+server.listen(PORT, "192.168.1.16", () => {
   console.log("server started at PORT:", PORT);
   connectDB();
 });
